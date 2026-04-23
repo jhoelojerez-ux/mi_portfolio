@@ -91,3 +91,6 @@ if st.sidebar.button("Ejecutar Análisis"):
 
             st.divider()
             st.info("💡 La **Estrella Roja** representa la combinación de activos que tiene el menor riesgo posible (Mínima Varianza).")
+
+    except Exception as e:
+        st.error(f"Ocurrió un error técnico: {e}")
