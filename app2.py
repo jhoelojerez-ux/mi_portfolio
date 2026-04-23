@@ -90,4 +90,4 @@ if st.sidebar.button("Ejecutar Análisis"):
                 st.dataframe(pesos_min_var.style.format({'Peso': '{:.2%}'}))
 
             st.divider()
-            st.info("💡 La **Estrella Roja** representa la combinación de activos que tiene el menor riesgo posible (Mínima Varianza).
+            st.info("💡 La **Estrella Roja** representa la combinación de activos que tiene el menor riesgo posible (Mínima Varianza)").
