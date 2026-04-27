@@ -18,7 +18,7 @@ st.sidebar.metric("Riesgo por Trade", f"${tamano_trade}")
 @st.cache_data
 def load_year_data():
     # Bajamos datos de 1 hora para luego agruparlos en 3 horas
-    df = yf.download("EURUSD=X", period="1y", interval="1h")
+    df = yf.download("BTC-USD", period="1y", interval="1h")
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     
