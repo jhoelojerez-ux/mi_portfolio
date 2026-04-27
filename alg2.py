@@ -10,7 +10,7 @@ st.sidebar.header("Configuración de Cuenta")
 
 # 1. Parámetros de la simulación
 saldo_inicial = 10000.0
-tamano_trade = 200.0 # Cantidad fija por operación
+tamano_trade = 1000.0 # Cantidad fija por operación
 st.sidebar.metric("Saldo Inicial", f"${saldo_inicial}")
 st.sidebar.metric("Riesgo por Trade", f"${tamano_trade}")
 
