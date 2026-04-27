@@ -3,47 +3,51 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Forex Backtest 1Y", layout="wide")
+st.set_page_config(page_title="Multi-Asset Algo Tester", layout="wide")
 
-st.title("📈 Backtesting EUR/USD - Temporalidad 3H")
-st.sidebar.header("Configuración de Cuenta")
+# --- BARRA LATERAL (SIDEBAR) ---
+st.sidebar.header("🕹️ Panel de Control")
 
-# 1. Parámetros de la simulación
-saldo_inicial = 10000.0
-tamano_trade = 1000.0 # Cantidad fija por operación
-st.sidebar.metric("Saldo Inicial", f"${saldo_inicial}")
-st.sidebar.metric("Riesgo por Trade", f"${tamano_trade}")
+# 1. Selección de Activo
+dict_activos = {
+    "Euro / Dólar": "EURUSD=X",
+    "Bitcoin": "BTC-USD",
+    "Ethereum": "ETH-USD",
+    "Apple (Acciones)": "AAPL",
+    "Oro": "GC=F"
+}
+seleccion = st.sidebar.selectbox("Selecciona el Activo", list(dict_activos.keys()))
+ticker = dict_activos[seleccion]
 
-# 2. Carga de Datos (1 año)
+# 2. Configuración de Dinero
+saldo_inicial = st.sidebar.number_input("Saldo Inicial ($)", value=10000.0, step=1000.0)
+tamano_trade = st.sidebar.number_input("Cantidad por Trade ($)", value=200.0, step=50.0)
+
+# 3. Temporalidad
+periodo = st.sidebar.selectbox("Periodo de Backtesting", ["6mo", "1y", "2y"], index=1)
+
+st.title(f"🚀 Visualizador: {seleccion}")
+st.write(f"Probando estrategia agresiva en **{ticker}** con trades de **${tamano_trade}**")
+
+# --- PROCESAMIENTO DE DATOS ---
 @st.cache_data
-def load_year_data():
-    # Bajamos datos de 1 hora para luego agruparlos en 3 horas
-    df = yf.download("BTC-USD", period="1y", interval="1h")
+def load_data(symbol, p):
+    df = yf.download(symbol, period=p, interval="1h")
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    
-    # Resample a 3 horas (esto limpia y agrupa automáticamente)
-    # OHLC: Open=First, High=Max, Low=Min, Close=Last
-    df_3h = df.resample('3h').agg({
-        'Open': 'first',
-        'High': 'max',
-        'Low': 'min',
-        'Close': 'last'
-    }).dropna()
-    return df_3h
+    return df.dropna()
 
-data = load_year_data()
+data = load_data(ticker, periodo)
 
-# 3. Indicadores (sobre el dataset de 3 horas)
+# Indicadores
 data['MA10'] = data['Close'].rolling(10).mean()
 data['MA20'] = data['Close'].rolling(20).mean()
-data['MA50'] = data['Close'].rolling(50).mean()
 data['STD20'] = data['Close'].rolling(20).std()
 data['Upper'] = data['MA20'] + (data['STD20'] * 2)
 data['Lower'] = data['MA20'] - (data['STD20'] * 2)
 data = data.dropna()
 
-# 4. Simulación (Trade Fijo de $200)
+# --- MOTOR DE SIMULACIÓN ---
 log_eventos = []
 balance = saldo_inicial
 posicion = None
@@ -54,49 +58,57 @@ for i in range(len(data)):
     row = data.iloc[i]
     
     if posicion is None:
-        if row['MA10'] > row['MA50'] and price >= row['Upper']:
+        # ENTRADA
+        if row['MA10'] > row['MA20'] and price > row['MA20']:
             posicion = {'tipo': 'LONG', 'entrada': price}
             log_eventos.append({"Fecha": current_time, "Acción": "ENTRADA LONG", "Precio": price, "Balance": f"${balance:.2f}"})
-        elif row['MA10'] < row['MA50'] and price <= row['Lower']:
+        elif row['MA10'] < row['MA20'] and price < row['MA20']:
             posicion = {'tipo': 'SHORT', 'entrada': price}
             log_eventos.append({"Fecha": current_time, "Acción": "ENTRADA SHORT", "Precio": price, "Balance": f"${balance:.2f}"})
             
     elif posicion['tipo'] == 'LONG':
-        # Salida o Stop Loss
+        # SALIDA
         razon = ""
         if price <= row['Lower']: razon = "STOP LOSS (Banda Inf)"
-        elif price < row['MA20']: razon = "SALIDA (Cruce MA20)"
+        elif price < row['MA10']: razon = "SALIDA RÁPIDA (MA10)"
         
         if razon:
-            # Ganancia = $200 * variación porcentual
-            pnl_operacion = tamano_trade * ((price - posicion['entrada']) / posicion['entrada'])
-            balance += pnl_operacion
-            log_eventos.append({"Fecha": current_time, "Acción": razon, "Precio": price, "PnL": f"${pnl_operacion:.2f}", "Balance": f"${balance:.2f}"})
+            pnl = tamano_trade * ((price - posicion['entrada']) / posicion['entrada'])
+            balance += pnl
+            log_eventos.append({"Fecha": current_time, "Acción": razon, "Precio": price, "PnL": f"${pnl:.2f}", "Balance": f"${balance:.2f}"})
             posicion = None
             
     elif posicion['tipo'] == 'SHORT':
+        # SALIDA
         razon = ""
         if price >= row['Upper']: razon = "STOP LOSS (Banda Sup)"
-        elif price > row['MA20']: razon = "SALIDA (Cruce MA20)"
+        elif price > row['MA10']: razon = "SALIDA RÁPIDA (MA10)"
         
         if razon:
-            pnl_operacion = tamano_trade * ((posicion['entrada'] - price) / posicion['entrada'])
-            balance += pnl_operacion
-            log_eventos.append({"Fecha": current_time, "Acción": razon, "Precio": price, "PnL": f"${pnl_operacion:.2f}", "Balance": f"${balance:.2f}"})
+            pnl = tamano_trade * ((posicion['entrada'] - price) / posicion['entrada'])
+            balance += pnl
+            log_eventos.append({"Fecha": current_time, "Acción": razon, "Precio": price, "PnL": f"${pnl:.2f}", "Balance": f"${balance:.2f}"})
             posicion = None
 
-# 5. Interfaz Visual
+# --- INTERFAZ DE RESULTADOS ---
 c1, c2, c3 = st.columns(3)
-c1.metric("Balance Actual", f"${balance:.2f}")
-c2.metric("Ganancia Total", f"${balance - saldo_inicial:.2f}")
-c3.metric("N° Operaciones", len([x for x in log_eventos if "ENTRADA" in x['Acción']]))
+retorno_total = ((balance - saldo_inicial) / saldo_inicial) * 100
+c1.metric("Balance Final", f"${balance:.2f}")
+c2.metric("Retorno Total", f"{retorno_total:.2f}%")
+c3.metric("Trades Realizados", len([x for x in log_eventos if "ENTRADA" in x['Acción']]))
 
-# Gráfico
+# Gráfico Principal
 fig = go.Figure()
-fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="EUR/USD 3H"))
-fig.add_trace(go.Scatter(x=data.index, y=data['MA10'], line=dict(color='blue', width=1), name="MA10"))
-fig.add_trace(go.Scatter(x=data.index, y=data['MA50'], line=dict(color='orange', width=1), name="MA50"))
+fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Precio"))
+fig.add_trace(go.Scatter(x=data.index, y=data['MA10'], line=dict(color='yellow', width=1), name="MA10"))
+fig.add_trace(go.Scatter(x=data.index, y=data['MA20'], line=dict(color='cyan', width=1), name="MA20"))
+fig.update_layout(xaxis_rangeslider_visible=False, height=600)
 st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("📝 Bitácora de Trades")
-st.dataframe(pd.DataFrame(log_eventos), use_container_width=True)
+# Tabla de Historial
+st.subheader("📝 Bitácora Detallada")
+if log_eventos:
+    st.dataframe(pd.DataFrame(log_eventos), use_container_width=True)
+else:
+    st.warning("No se encontraron trades con la configuración actual.")
+
